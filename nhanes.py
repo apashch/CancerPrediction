@@ -49,39 +49,40 @@ class NHANES:
 			dfile = col.file
 			folder = col.category
 
-			dfilepath = self.db_path+folder+'/'+dfile+".XPT"
-			print(dfilepath)
+			for yearcode in ["", "_B", "_C", "_D","_E", "_F", "_G","_H","_I"]:
+				dfilepath = self.db_path+folder+'/'+dfile+yearcode+".XPT"
+				print(dfilepath)
 
-			if dfile in cache:
-				df_tmp = cache[dfile]
-			else:
-				try:
-					df_tmp = pd.read_sas(dfilepath)
-					cache[dfile] = df_tmp
-				except FileNotFoundError:
+				if dfile in cache:
+					df_tmp = cache[dfile]
+				else:
+					try:
+						df_tmp = pd.read_sas(dfilepath)
+						cache[dfile] = df_tmp
+					except FileNotFoundError:
+						if verbose:
+							print("Not found in the DB ", col)
+						continue
+
+				# sanity check 1 - do we have an ID? 
+				if 'SEQN' not in df_tmp.columns:
 					if verbose:
-						print("Not found in the DB ", col)
+						print("No SEQN found in ", col)
 					continue
 
-			# sanity check 1 - do we have an ID? 
-			if 'SEQN' not in df_tmp.columns:
-				if verbose:
-					print("No SEQN found in ", col)
-				continue
+				# select only relevant feature
+				df_col = df_tmp.filter(items=['SEQN', col.field])
 
-			# select only relevant feature
-			df_col = df_tmp.filter(items=['SEQN', col.field])
+				# sanity check 2 - now we should have 2 cols
+				if df_col.shape[1] != 2:
+					if verbose:
+						print("Failed to select field in", col)
+					continue
 
-			# sanity check 2 - now we should have 2 cols
-			if df_col.shape[1] != 2:
-				if verbose:
-					print("Failed to select field in", col)
-				continue
+				df.join(df_col.set_index("SEQN"))
 
-			df.join(df_col.set_index("SEQN"))
-		
+		return df	
 		proc_df = pd.DataFrame()
-
 
 		# do preprocessing steps
 		for col in self.columns:
@@ -100,29 +101,26 @@ class NHANES:
 			else:
 				prepr_col = df[field]
 
-		proc_df.join(prepr_col.set_index("SEQN"))
+			proc_df.join(prepr_col.set_index("SEQN"))
 		return proc_df
-			
-
-
-
-				
-
-
 
 	def process(self, verbose):
-		df = None
 		cache = {}
 		# collect relevant data
 		df = []
 		for fe_col in self.columns:
 			sheet = fe_col.category
 			field = fe_col.field
-			data_files = glob.glob(self.db_path+sheet+'/*.XPT')
+			file  = fe_col.file
+
+			ftype1 = self.db_path+sheet+'/'+file+'.XPT'
+			ftype2 = self.db_path+sheet+'/'+file+'_[B-I].XPT'
+
+			data_files = glob.glob(ftype1)+glob.glob(ftype2)
 			df_col = []
 			for dfile in data_files:
-				print(80*' ', end='\r')
-				print('\rProcessing: ' + dfile.split('/')[-1], end='')
+				#print(80*' ', end='\r')
+				#print('\rProcessing: ' + dfile.split('/')[-1], end='')
 				# read the file
 				if dfile in cache:
 					df_tmp = cache[dfile]
@@ -143,19 +141,28 @@ class NHANES:
 
 			try:
 				df_col = pd.concat(df_col)
+				if verbose:
+					print('\nSucefully created field ' + field)
+					print(df_col.head())
+
 			except:
 				#raise Error('Failed to process' + field)
 				#raise Exception('Failed to process' + field)
 				if verbose:
-					print('Failed to process' + field)
+					print('\nFailed to process ' + field)
 				continue
+
 			df.append(df_col)
+
 		df = pd.concat(df, axis=1)
 		#df = pd.merge(df, df_sel, how='outer')
 
 		# do preprocessing steps
 		df_proc = []#[df['SEQN']]
 		for fe_col in self.columns:
+			if fe_col.field not in df.columns:
+				continue
+
 			field = fe_col.field
 			fe_col.data = df[field].copy()
 			# do preprocessing
@@ -163,11 +170,12 @@ class NHANES:
 				prepr_col = fe_col.preprocessor(df[field], fe_col.args)
 			else:
 				prepr_col = df[field]
+
 			# handle the 1 to many
-			if (len(prepr_col.shape) > 1):
-				fe_col.cost = [fe_col.cost] * prepr_col.shape[1]
-			else:
-				fe_col.cost = [fe_col.cost]
+			# if (len(prepr_col.shape) > 1):
+			# 	fe_col.cost = [fe_col.cost] * prepr_col.shape[1]
+			# else:
+			# 	fe_col.cost = [fe_col.cost]
 			df_proc.append(prepr_col)
 		self.dataset = pd.concat(df_proc, axis=1)
 		return self.dataset
@@ -223,6 +231,7 @@ class Dataset():
 		self.features = None
 		self.targets = None
 		self.costs = None
+		self.df = None
 		
 	def load_arthritis(self, opts=None):
 		columns = [
@@ -331,12 +340,13 @@ class Dataset():
 		#assuming features were passed as a dataframe
 		columns = [FeatureColumn(item[2], item[1], item[0], None) for item in features.values]
 		nhanes_dataset = NHANES(self.data_path, columns)
-		df = nhanes_dataset.process_new(verbose)
+		df = nhanes_dataset.process(verbose)
 
 		#target column
 		fe_cols = df.drop(['MCQ220'], axis=1)
 		features = fe_cols.values
 		target = df['MCQ220'].values
+
 		# remove nan labeled samples
 		inds_valid = ~ np.isnan(target)
 		features = features[inds_valid]
@@ -348,10 +358,13 @@ class Dataset():
 		targets[target == 2] = 0 # no cancer
 		targets[target == 9] = 0 # don't know assume no cancer
 
+		self.df = df.loc[inds_valid]
+		self.df.MCQ220 = targets
+
 	   # random permutation
 		perm = np.random.permutation(targets.shape[0])
 		self.features = features[perm]
 		self.targets = targets[perm]
-		self.costs = [c.cost for c in columns[1:]]
-		self.costs = np.array(
-			[item for sublist in self.costs for item in sublist])
+		#self.costs = [c.cost for c in columns[1:]]
+		#self.costs = np.array(
+		#	[item for sublist in self.costs for item in sublist])
