@@ -153,8 +153,13 @@ class NHANES:
 				continue
 
 			df.append(df_col)
-
-		df = pd.concat(df, axis=1)
+		try:
+			df = pd.concat(df, axis=1)
+		except pandas.core.indexes.base.InvalidIndexError:
+			print('\n\n________Concat error_______')
+			print (df, df[0].head(), df[-1].head())
+			print('\n\n')
+			return pd.DataFrame()
 		#df = pd.merge(df, df_sel, how='outer')
 
 		# do preprocessing steps

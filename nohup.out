@@ -1,0 +1,12 @@
+/Users/Artem/anaconda/lib/python3.5/site-packages/pandas/core/generic.py:3110: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: http://pandas.pydata.org/pandas-docs/stable/indexing.html#indexing-view-versus-copy
+  self[name] = value
+Traceback (most recent call last):
+  File "FeatureSelection2.py", line 26, in <module>
+    if pos[thisfeature].isna().sum()[0] > 0.5 * pos.shape[0] and neg[thisfeature].isna().sum()[0] > 0.5 * neg.shape[0]:
+  File "/Users/Artem/anaconda/lib/python3.5/site-packages/pandas/core/generic.py", line 3081, in __getattr__
+    return object.__getattribute__(self, name)
+AttributeError: 'DataFrame' object has no attribute 'isna'
