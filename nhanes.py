@@ -104,7 +104,7 @@ class NHANES:
 			proc_df.join(prepr_col.set_index("SEQN"))
 		return proc_df
 
-	def process(self, verbose):
+	def process(self, verbose = False):
 		cache = {}
 		# collect relevant data
 		df = []
@@ -155,7 +155,7 @@ class NHANES:
 			df.append(df_col)
 		try:
 			df = pd.concat(df, axis=1)
-		except pandas.core.indexes.base.InvalidIndexError:
+		except pd.core.indexes.base.InvalidIndexError:
 			print('\n\n________Concat error_______')
 			print (df, df[0].head(), df[-1].head())
 			print('\n\n')
